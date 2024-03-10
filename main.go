@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
+	"golang.org/x/term"
 )
 
 type Account struct {
 	Username string `help:"Username" short:"u" json:"user"`
-	Password string `help:"Password" short:"p" json:"pass"`
 	Site     string `help:"Site" short:"s" json:"site"`
+	Password string `json:"pass"`
 }
 
 const DB_PATH string = ".passman-db.json"
@@ -62,10 +63,7 @@ type CLI struct {
 		Oneline bool `cmd:"" help:"Printing in a line"`
 	} `cmd:"ls"`
 
-	Get struct {
-		Username string `cmd:"" short:"u"`
-		Site     string `cmd:"" short:"s"`
-	} `cmd:"get"`
+	Get Account `cmd:"get"`
 }
 
 func main() {
@@ -82,13 +80,13 @@ func main() {
 	case "new":
 		err = newAccount(&cli.New)
 		if err != nil {
-			err = fmt.Errorf("Failed to create new account:\n\t%v", err)
+			err = fmt.Errorf("Failed to create new account:\n%v", err)
 		}
 
 	case "get":
 		err = getAccount(cli)
 		if err != nil {
-			err = fmt.Errorf("Failed to create new account:\n\t%v", err)
+			err = fmt.Errorf("Failed to get an account:\n%v", err)
 		}
 
 	default:
@@ -98,6 +96,31 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func readPassword() (string, error) {
+	fmt.Println("Enter password: ")
+
+	// Disable echoing input to the terminal
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+
+	defer func() {
+		err := term.Restore(int(os.Stdin.Fd()), oldState)
+		if err != nil {
+			log.Fatal("Error restoring terminal: " + err.Error())
+		}
+	}()
+
+	// Read input without echoing to the screen
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+
+	return string(password), nil
 }
 
 func getAccount(cli *CLI) error {
@@ -125,6 +148,12 @@ func getAccountID(username string, site string) (string, error) {
 }
 
 func newAccount(account *Account) error {
+	var err error
+	account.Password, err = readPassword()
+	if err != nil {
+		return err
+	}
+
 	// creating id
 	id, err := account.ID()
 	if err != nil {
@@ -134,7 +163,7 @@ func newAccount(account *Account) error {
 	// check for duplication
 	_, exists := accounts[id]
 	if exists {
-		return fmt.Errorf("Site exists: %s", account.Site)
+		return fmt.Errorf("Site %s exists", account.Site)
 	}
 
 	// creating new account
