@@ -1,31 +1,22 @@
 package main
 
 import (
-	"crypto/sha1"
-	"encoding"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/alecthomas/kong"
-	"golang.org/x/term"
+	"github.com/hn275/pass-man/internal/account"
+	"github.com/hn275/pass-man/internal/crypto"
 )
-
-type Account struct {
-	Username string `help:"Username" short:"u" json:"user"`
-	Site     string `help:"Site" short:"s" json:"site"`
-	Password string `json:"pass"`
-}
 
 const DB_PATH string = ".passman-db.json"
 
 var (
 	dbFile   *os.File
-	accounts map[string]Account = map[string]Account{}
+	accounts = make(map[string]account.Account)
 )
 
 func init() {
@@ -57,13 +48,13 @@ func init() {
 }
 
 type CLI struct {
-	New Account `cmd:"" help:"creating new account"`
+	New account.Account `cmd:"" help:"creating new account"`
 
 	Ls struct {
 		Oneline bool `cmd:"" help:"Printing in a line"`
 	} `cmd:"ls"`
 
-	Get Account `cmd:"get"`
+	Get account.Account `cmd:"get"`
 }
 
 func main() {
@@ -78,7 +69,7 @@ func main() {
 		log.Println("LS")
 
 	case "new":
-		err = newAccount(&cli.New)
+		err = createAccount(&cli.New)
 		if err != nil {
 			err = fmt.Errorf("Failed to create new account:\n%v", err)
 		}
@@ -98,58 +89,9 @@ func main() {
 	}
 }
 
-func readPassword() (string, error) {
-	fmt.Println("Enter password: ")
-
-	// Disable echoing input to the terminal
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return "", err
-	}
-
-	defer func() {
-		err := term.Restore(int(os.Stdin.Fd()), oldState)
-		if err != nil {
-			log.Fatal("Error restoring terminal: " + err.Error())
-		}
-	}()
-
-	// Read input without echoing to the screen
-	password, err := term.ReadPassword(int(os.Stdin.Fd()))
-	if err != nil {
-		return "", err
-	}
-
-	return string(password), nil
-}
-
-func getAccount(cli *CLI) error {
-	id, err := getAccountID(cli.Get.Username, cli.Get.Site)
-	if err != nil {
-		return err
-	}
-
-	acc, exists := accounts[id]
-	if !exists {
-		return errors.New("Account not found")
-	}
-
-	log.Println(acc)
-
-	return nil
-}
-
-func getAccountID(username string, site string) (string, error) {
-	acc := Account{
-		Username: username,
-		Site:     site,
-	}
-	return acc.ID()
-}
-
-func newAccount(account *Account) error {
+func createAccount(account *account.Account) error {
 	var err error
-	account.Password, err = readPassword()
+	account.Password, err = crypto.ReadSecretStdin("Enter password:")
 	if err != nil {
 		return err
 	}
@@ -180,23 +122,26 @@ func newAccount(account *Account) error {
 	return nil
 }
 
-func (acc *Account) ID() (string, error) {
-	b := sha1.New()
-	parts := acc.Username + acc.Site
-	_, err := b.Write([]byte(strings.ToLower(parts)))
+func getAccount(cli *CLI) error {
+	id, err := getAccountID(cli.Get.Username, cli.Get.Site)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	binMarshaler, ok := b.(encoding.BinaryMarshaler)
-	if !ok {
-		return "", errors.New("BinaryMarshaler not implemented")
-	}
-	idBytes, err := binMarshaler.MarshalBinary()
-	if err != nil {
-		return "", err
+	acc, exists := accounts[id]
+	if !exists {
+		return errors.New("Account not found")
 	}
 
-	id := base64.RawStdEncoding.EncodeToString(idBytes)
-	return id, nil
+	log.Println(acc)
+
+	return nil
+}
+
+func getAccountID(username string, site string) (string, error) {
+	acc := account.Account{
+		Username: username,
+		Site:     site,
+	}
+	return acc.ID()
 }

@@ -3,8 +3,12 @@ package crypto
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"log"
+	"os"
 
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/term"
 )
 
 const (
@@ -55,4 +59,29 @@ func (b *CipherBlock) Decrypt(ciphertext, additionalData []byte) ([]byte, error)
 	encryptedText := ciphertext[block.NonceSize():]
 
 	return block.Open(pt, nonce, encryptedText, additionalData)
+}
+
+func ReadSecretStdin(prompt string) (string, error) {
+	fmt.Println(prompt)
+
+	// Disable echoing input to the terminal
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+
+	defer func() {
+		err := term.Restore(int(os.Stdin.Fd()), oldState)
+		if err != nil {
+			log.Fatal("Error restoring terminal: " + err.Error())
+		}
+	}()
+
+	// Read input without echoing to the screen
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+
+	return string(password), nil
 }
