@@ -12,8 +12,8 @@ import (
 
 // NOTE: Password should not be a part of this struct
 type Account struct {
-    Username string `cmd:"" help:"Username" short:"u" json:"user"`
-    Site     string `cmd:"" help:"Site" short:"s" json:"site"`
+	Username string `arg:"" help:"username of the account"`
+	Site     string `arg:"" help:"site associated to the account"`
 }
 
 func New(username, site string) Account {

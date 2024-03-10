@@ -16,43 +16,28 @@ import (
 
 const DB_PATH string = ".passman-db.json"
 
-var (
-	dbFile   *os.File
-	accounts = make(map[string]account.Account)
-)
-
 type CLI struct {
-	New account.Account `cmd:"new" help:"creating new account"`
-
-	Ls struct {
-		Oneline bool `cmd:"" help:"Printing in a line"`
-	} `cmd:"ls"`
-
-	Get account.Account `cmd:"get"`
+	New account.Account `cmd:"" help:"creating new account."`
+	Get struct{}        `cmd:"" help:"selecting and writing password to clipboard buffer."`
 }
 
 func main() {
-	defer dbFile.Close()
+	db := database.New()
+	defer db.Close()
 
 	cli := &CLI{}
 	ctx := kong.Parse(cli)
 
 	var err error
 	switch ctx.Command() {
-	case "ls":
-		err = handleLS(cli)
-		if err != nil {
-			err = fmt.Errorf("Failed to list accounts:\n%v", err)
-		}
-
-	case "new":
+	case "new <username> <site>":
 		err = handleNewAccount(&cli.New)
 		if err != nil {
 			err = fmt.Errorf("Failed to create new account:\n%v", err)
 		}
 
 	case "get":
-		err = getAccount(cli)
+		err = getAccount()
 		if err != nil {
 			err = fmt.Errorf("Failed to get an account:\n%v", err)
 		}
@@ -64,12 +49,6 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-}
-
-func handleLS(cli *CLI) error {
-	var err error
-	_ = database.New()
-	return err
 }
 
 func handleNewAccount(account *account.Account) error {
@@ -117,28 +96,9 @@ func handleNewAccount(account *account.Account) error {
 	return err
 }
 
-func getAccount(cli *CLI) error {
-	id, err := getAccountID(cli.Get.Username, cli.Get.Site)
-	if err != nil {
-		return err
-	}
-
-	acc, exists := accounts[id]
-	if !exists {
-		return errors.New("Account not found")
-	}
-
-	log.Println(acc)
-
+func getAccount() error {
+	log.Println("Implement this")
 	return nil
-}
-
-func getAccountID(username string, site string) (string, error) {
-	acc := account.Account{
-		Username: username,
-		Site:     site,
-	}
-	return acc.ID()
 }
 
 func printErrExit(format string, a ...any) {
