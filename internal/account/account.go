@@ -6,12 +6,21 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+
+	_ "github.com/alecthomas/kong"
 )
 
+// NOTE: Password should not be a part of this struct
 type Account struct {
-	Username string `help:"Username" short:"u" json:"user"`
-	Site     string `help:"Site" short:"s" json:"site"`
-	Password string `json:"pass"`
+    Username string `cmd:"" help:"Username" short:"u" json:"user"`
+    Site     string `cmd:"" help:"Site" short:"s" json:"site"`
+}
+
+func New(username, site string) Account {
+	return Account{
+		Username: username,
+		Site:     site,
+	}
 }
 
 func (acc *Account) ID() (string, error) {

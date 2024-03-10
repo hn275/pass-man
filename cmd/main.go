@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -10,6 +10,8 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/hn275/pass-man/internal/account"
 	"github.com/hn275/pass-man/internal/crypto"
+	"github.com/hn275/pass-man/internal/database"
+	"github.com/mattn/go-sqlite3"
 )
 
 const DB_PATH string = ".passman-db.json"
@@ -19,36 +21,8 @@ var (
 	accounts = make(map[string]account.Account)
 )
 
-func init() {
-	// get home path
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-	dbPath := fmt.Sprintf("%s%s%s", homeDir, string(os.PathSeparator), DB_PATH)
-
-	// open file
-	dbFile, err = os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// read file
-	data, err := os.ReadFile(dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if len(data) == 0 {
-		return
-	}
-
-	if err := json.Unmarshal(data, &accounts); err != nil {
-		log.Fatal("error reading db(json): " + err.Error())
-	}
-}
-
 type CLI struct {
-	New account.Account `cmd:"" help:"creating new account"`
+	New account.Account `cmd:"new" help:"creating new account"`
 
 	Ls struct {
 		Oneline bool `cmd:"" help:"Printing in a line"`
@@ -66,10 +40,13 @@ func main() {
 	var err error
 	switch ctx.Command() {
 	case "ls":
-		log.Println("LS")
+		err = handleLS(cli)
+		if err != nil {
+			err = fmt.Errorf("Failed to list accounts:\n%v", err)
+		}
 
 	case "new":
-		err = createAccount(&cli.New)
+		err = handleNewAccount(&cli.New)
 		if err != nil {
 			err = fmt.Errorf("Failed to create new account:\n%v", err)
 		}
@@ -89,9 +66,19 @@ func main() {
 	}
 }
 
-func createAccount(account *account.Account) error {
+func handleLS(cli *CLI) error {
 	var err error
-	account.Password, err = crypto.ReadSecretStdin("Enter password:")
+	_ = database.New()
+	return err
+}
+
+func handleNewAccount(account *account.Account) error {
+	if len(account.Username) == 0 || len(account.Site) == 0 {
+		return errors.New("Invalid account detail")
+	}
+
+	fmt.Println("Enter account password:")
+	pass, err := crypto.ReadSecretStdin()
 	if err != nil {
 		return err
 	}
@@ -102,24 +89,32 @@ func createAccount(account *account.Account) error {
 		return fmt.Errorf("Error creating id: %v", err)
 	}
 
-	// check for duplication
-	_, exists := accounts[id]
-	if exists {
-		return fmt.Errorf("Site %s exists", account.Site)
+	// scramble password
+	ad, err := getMasterKey()
+	if err != nil {
+		printErrExit("error reading masterkey: %v", err)
 	}
+
+	cipher := crypto.New(crypto.SecretKey())
+	ciphertext, err := cipher.Encrypt([]byte(pass), ad)
+	if err != nil {
+		printErrExit("error ciphering password: %v", err)
+	}
+	scrambledPass := hex.EncodeToString(ciphertext)
 
 	// creating new account
-	accounts[id] = *account
-	b, err := json.MarshalIndent(accounts, "", "    ")
-	if err != nil {
-		return fmt.Errorf("Error marshalling bytes %v", err)
+	db := database.New()
+	q := `INSERT INTO pass (id, user, pass, site) VALUES (?, ?, ?, ?);`
+	_, err = db.Exec(q, id, account.Username, scrambledPass, account.Site)
+	if err == nil {
+		return nil
 	}
-	_, err = dbFile.Write(b)
-	if err != nil {
-		return fmt.Errorf("Failed to write: %v", err)
 
+	sqlite3err, ok := err.(sqlite3.Error)
+	if ok && sqlite3err.Code == sqlite3.ErrConstraint {
+		return errors.New("Account exists in database.")
 	}
-	return nil
+	return err
 }
 
 func getAccount(cli *CLI) error {
@@ -144,4 +139,18 @@ func getAccountID(username string, site string) (string, error) {
 		Site:     site,
 	}
 	return acc.ID()
+}
+
+func printErrExit(format string, a ...any) {
+	fmt.Printf(format+"\n", a...)
+	os.Exit(1)
+}
+
+func getMasterKey() ([]byte, error) {
+	fmt.Println("Enter master key:")
+	key, err := crypto.ReadSecretStdin()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(key), nil
 }
