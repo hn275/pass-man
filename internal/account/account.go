@@ -1,13 +1,9 @@
 package account
 
 import (
-	"crypto/sha1"
-	"encoding"
-	"encoding/base64"
-	"errors"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
-
-	_ "github.com/alecthomas/kong"
 )
 
 // NOTE: Password should not be a part of this struct
@@ -24,22 +20,13 @@ func New(username, site string) Account {
 }
 
 func (acc *Account) ID() (string, error) {
-	b := sha1.New()
+	b := sha256.New()
 	id := acc.Username + acc.Site
 	_, err := b.Write([]byte(strings.ToLower(id)))
 	if err != nil {
 		return "", err
 	}
 
-	binMarshaler, ok := b.(encoding.BinaryMarshaler)
-	if !ok {
-		return "", errors.New("BinaryMarshaler not implemented")
-	}
-
-	idBytes, err := binMarshaler.MarshalBinary()
-	if err != nil {
-		return "", err
-	}
-
-	return base64.RawStdEncoding.EncodeToString(idBytes), nil
+	idBytes := b.Sum(nil)
+	return hex.EncodeToString(idBytes), nil
 }
