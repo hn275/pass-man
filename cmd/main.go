@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/alecthomas/kong"
 	"github.com/hn275/pass-man/internal/account"
@@ -96,8 +97,78 @@ func handleNewAccount(account *account.Account) error {
 	return err
 }
 
+type Credential struct {
+	ID   string `db:"id"`
+	User string `db:"user"`
+	Site string `db:"site"`
+	Pass string `db:"pass"`
+}
+
+func (c *Credential) String() string {
+	return fmt.Sprintf("%s @ %s", c.User, c.Site)
+}
+
 func getAccount() error {
-	log.Println("Implement this")
+	db := database.New()
+	defer db.Close()
+
+	// get all accounts
+	var accounts []Credential
+	rows, err := db.Queryx("SELECT id,user,site,pass FROM pass;")
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var cred Credential
+		if err := rows.StructScan(&cred); err != nil {
+			return err
+		}
+		accounts = append(accounts, cred)
+	}
+
+	if len(accounts) == 0 {
+		fmt.Println("You have no saved accounts.")
+		os.Exit(0)
+	}
+
+	// get user input
+	for i, acc := range accounts {
+		fmt.Printf("%d %s\n", i+1, acc.String())
+	}
+
+	fmt.Println()
+	var selectedAccount Credential
+	for {
+		fmt.Printf("Select an account (default=1): ")
+		buf := make([]byte, 10)
+		n, err := os.Stdin.Read(buf)
+		if err != nil {
+			printErrExit(err.Error())
+		}
+
+		buf = buf[:n-1] // since the last char is a new line
+		if len(buf) == 0 {
+			selectedAccount = accounts[0]
+			break
+		}
+
+		choice, err := strconv.Atoi(string(buf))
+		if err != nil {
+			fmt.Println("Invalid number, try again.")
+			log.Println(err)
+			continue
+		}
+
+		if choice > len(accounts) || choice <= 0 {
+			fmt.Println("Invalid selection, try again.")
+			continue
+		}
+
+		selectedAccount = accounts[choice-1]
+		break
+	}
+
 	return nil
 }
 
