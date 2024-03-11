@@ -13,6 +13,7 @@ import (
 	"github.com/hn275/pass-man/internal/crypto"
 	"github.com/hn275/pass-man/internal/database"
 	"github.com/mattn/go-sqlite3"
+	"golang.design/x/clipboard"
 )
 
 const DB_PATH string = ".passman-db.json"
@@ -168,6 +169,32 @@ func getAccount() error {
 		selectedAccount = accounts[choice-1]
 		break
 	}
+
+	// get user master password
+	fmt.Println("Enter master password:")
+	ad, err := getMasterKey()
+	if err != nil {
+		return err
+	}
+
+	// decode ciphered password
+	ciphertext, err := hex.DecodeString(selectedAccount.Pass)
+	if err != nil {
+		return err
+	}
+
+	pt, err := crypto.New(crypto.SecretKey()).Decrypt(ciphertext, ad)
+	if err != nil {
+		return err
+	}
+
+	// write to clipboard
+	if err := clipboard.Init(); err != nil {
+		return err
+	}
+
+	clipboard.Write(clipboard.FmtText, pt)
+    fmt.Println("Password copied to clipboard!")
 
 	return nil
 }

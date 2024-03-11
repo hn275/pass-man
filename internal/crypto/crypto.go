@@ -74,6 +74,10 @@ func init() {
 	}
 }
 
+func New(key []byte) *CipherBlock {
+	return &CipherBlock{key}
+}
+
 func SecretKey() []byte {
 	b := make([]byte, KeySize)
 	n := copy(b, key)
@@ -81,10 +85,6 @@ func SecretKey() []byte {
 		panic("error copying key")
 	}
 	return b
-}
-
-func New(key []byte) *CipherBlock {
-	return &CipherBlock{key}
 }
 
 func (b *CipherBlock) Encrypt(plaintext, additionalData []byte) ([]byte, error) {
